@@ -19,3 +19,5 @@
 
 [python_mcp_agent](https://github.com/dabidstudio/python_mcp_agent.git) - dabidstudio GitHub의  python_mcp_agent  Repo  
 
+[mcp-client](https://github.com/teddynote-lab/langgraph-mcp-agents) - Teddynot Lab Langchain mcp client
+
