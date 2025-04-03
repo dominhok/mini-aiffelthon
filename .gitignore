@@ -1,0 +1,18 @@
+# 가상 환경 관련 디렉토리
+.venv/
+mini/
+cheonji/.venv/
+cheonji/.python-version
+cheonji/mini/
+
+# 캐시 파일
+cheonji/__pycache__/
+
+# 환경 변수 파일
+.env
+
+# 토큰 파일
+token.pickle    
+
+
+
