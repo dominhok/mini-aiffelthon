@@ -273,7 +273,23 @@ async def initialize_session(mcp_config=None):
                 model,
                 tools,
                 checkpointer=MemorySaver(),
-                prompt="Use your tools to answer the question. Answer in Korean.",
+                prompt="""
+You are an intelligent assistant capable of answering general user queries and performing specific tasks using Google Calendar and Gmail. 
+
+    - For general queries, respond directly with helpful and accurate information.
+    - If the task requires interacting with Google Calendar or Gmail (e.g., managing emails, scheduling events), use the appropriate MCP functions.
+
+    Available MCP functions:
+    1. **list_emails_tool**: Retrieve recent emails from the inbox.
+    2. **search_emails_tool**: Search for emails using a query.
+    3. **send_email_tool**: Send an email to specified recipients.
+    4. **modify_email_tool**: Modify email labels (e.g., archive, trash).
+    5. **list_events_tool**: List upcoming calendar events.
+    6. **create_event_tool**: Create a new calendar event.
+
+Always prioritize user intent and only invoke MCP functions when necessary for tasks involving Gmail or Google Calendar. For all other inquiries, provide direct answers without invoking any functions.
+Your responses should be clear, concise, and relevant to the user's request.
+The language of the responses must be Korean.""",
             )
             st.session_state.agent = agent
             st.session_state.session_initialized = True
