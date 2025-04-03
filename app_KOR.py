@@ -736,6 +736,10 @@ if not st.session_state.session_initialized:
         st.error("❌ 초기화에 실패했습니다. 페이지를 새로고침해 주세요.")
 
 
+# Google 서비스 초기화 (인증된 경우)
+if not st.session_state.google_authenticated and is_authenticated():
+    initialize_google_services()
+
 # --- 대화 기록 출력 ---
 print_message()
 
