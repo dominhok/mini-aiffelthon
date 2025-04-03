@@ -31,10 +31,20 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.runnables import RunnableConfig
 from langchain_upstage import ChatUpstage
 
+# Google 인증 관련 모듈 임포트
+from google_auth import (
+    create_oauth_flow, get_authorization_url, fetch_token, 
+    save_credentials, load_credentials, is_authenticated,
+    build_gmail_service, build_calendar_service
+)
+from gmail_utils import format_email_for_display
+from calendar_utils import format_event_for_display
+
 # 환경 변수 로드 (.env 파일에서 API 키 등의 설정을 가져옴)
 load_dotenv(override=True)
 
 # 페이지 설정: 제목, 아이콘, 레이아웃 구성
+# 브라우저 탭에 표시될 제목과 아이콘이다.
 st.set_page_config(page_title="Agent with MCP Tools", page_icon="🧠", layout="wide")
 
 # 사이드바 최상단에 저자 정보 추가 (다른 사이드바 요소보다 먼저 배치)
@@ -42,6 +52,7 @@ st.sidebar.markdown("### ✍️ Made by [테디노트](https://youtube.com/c/ted
 st.sidebar.divider()  # 구분선 추가
 
 # 기존 페이지 타이틀 및 설명
+# 웹 페이지의 타이틀과 설명이다.
 st.title("🤖 Agent with MCP Tools")
 st.markdown("✨ MCP 도구를 활용한 ReAct 에이전트에게 질문해보세요.")
 
@@ -52,9 +63,16 @@ if "session_initialized" not in st.session_state:
     st.session_state.history = []  # 대화 기록 저장 리스트
     st.session_state.mcp_client = None  # MCP 클라이언트 객체 저장 공간
 
+    ### 구글 인증 관련
+    st.session_state.google_authenticated = False  # Google 인증 상태
+    st.session_state.gmail_service = None  # Gmail 서비스 객체
+    st.session_state.calendar_service = None  # 캘린더 서비스 객체
+
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = random_uuid()
 
+### Google 인증 관련 상수
+REDIRECT_URI = "http://localhost:8501/callback"
 
 # --- 함수 정의 부분 ---
 
@@ -262,6 +280,224 @@ async def initialize_session(mcp_config=None):
         st.error(traceback.format_exc())
         return False
 
+def initialize_google_services():
+    """
+    Google 서비스(Gmail, 캘린더)를 초기화합니다.
+    """
+    if is_authenticated():
+        credentials = load_credentials()
+        st.session_state.gmail_service = build_gmail_service(credentials)
+        st.session_state.calendar_service = build_calendar_service(credentials)
+        st.session_state.google_authenticated = True
+        return True
+    return False
+
+
+
+# --- Google 인증 UI ---
+with st.sidebar.expander("Google 계정 연동", expanded=True):
+    if not st.session_state.google_authenticated:
+        st.write("Google 계정을 연동하여 Gmail과 캘린더를 사용할 수 있습니다.")
+        
+        if st.button("Google 계정 연동하기", type="primary", use_container_width=True):
+            flow = create_oauth_flow(REDIRECT_URI)
+            auth_url = get_authorization_url(flow)
+            st.session_state.flow = flow
+            st.markdown(f"[Google 계정 인증하기]({auth_url})")
+            st.info("위 링크를 클릭하여 Google 계정에 로그인하고 권한을 허용해주세요.")
+            
+        # 인증 코드 입력 필드
+        auth_code = st.text_input("인증 코드 입력", placeholder="Google 인증 후 받은 코드를 입력하세요")
+        if auth_code and st.button("인증 완료", use_container_width=True):
+            try:
+                credentials = fetch_token(st.session_state.flow, auth_code)
+                save_credentials(credentials)
+                if initialize_google_services():
+                    st.success("✅ Google 계정 연동이 완료되었습니다!")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"인증 오류: {str(e)}")
+    else:
+        st.success("✅ Google 계정이 연동되었습니다.")
+        if st.button("연동 해제", use_container_width=True):
+            # 토큰 파일 삭제
+            token_path = Path("token.pickle")
+            if token_path.exists():
+                token_path.unlink()
+            st.session_state.google_authenticated = False
+            st.session_state.gmail_service = None
+            st.session_state.calendar_service = None
+            st.info("Google 계정 연동이 해제되었습니다.")
+            st.rerun()
+
+# --- Gmail 탭 ---
+if st.session_state.google_authenticated:
+    tab1, tab2 = st.tabs(["📧 Gmail", "📅 캘린더"])
+    
+    with tab1:
+        st.header("Gmail")
+        
+        # 이메일 목록 조회
+        if st.button("받은편지함 조회", use_container_width=True):
+            with st.spinner("이메일을 불러오는 중..."):
+                try:
+                    from gmail_utils import list_emails
+                    emails = list_emails(st.session_state.gmail_service, max_results=10)
+                    
+                    if not emails:
+                        st.info("받은편지함에 이메일이 없습니다.")
+                    else:
+                        for email in emails:
+                            formatted = format_email_for_display(email)
+                            with st.expander(f"📧 {formatted['subject']}"):
+                                st.write(f"**발신자:** {formatted['from']}")
+                                st.write(f"**날짜:** {formatted['date']}")
+                                st.write(f"**내용 미리보기:** {formatted['snippet']}")
+                                st.write(f"**ID:** {formatted['id']}")
+                except Exception as e:
+                    st.error(f"이메일 조회 중 오류 발생: {str(e)}")
+        
+        # 이메일 검색
+        search_query = st.text_input("이메일 검색", placeholder="검색어를 입력하세요 (예: from:example@gmail.com)")
+        if search_query and st.button("검색", use_container_width=True):
+            with st.spinner("검색 중..."):
+                try:
+                    from gmail_utils import search_emails
+                    emails = search_emails(st.session_state.gmail_service, query=search_query)
+                    
+                    if not emails:
+                        st.info(f"'{search_query}' 검색 결과가 없습니다.")
+                    else:
+                        for email in emails:
+                            formatted = format_email_for_display(email)
+                            with st.expander(f"📧 {formatted['subject']}"):
+                                st.write(f"**발신자:** {formatted['from']}")
+                                st.write(f"**날짜:** {formatted['date']}")
+                                st.write(f"**내용 미리보기:** {formatted['snippet']}")
+                                st.write(f"**ID:** {formatted['id']}")
+                except Exception as e:
+                    st.error(f"이메일 검색 중 오류 발생: {str(e)}")
+        
+        # 이메일 전송
+        with st.expander("✉️ 이메일 보내기"):
+            to = st.text_input("받는 사람", placeholder="example@gmail.com (쉼표로 구분하여 여러 명 지정 가능)")
+            subject = st.text_input("제목")
+            body = st.text_area("내용", height=150)
+            cc = st.text_input("참조 (CC)", placeholder="선택사항")
+            bcc = st.text_input("숨은 참조 (BCC)", placeholder="선택사항")
+            html_format = st.checkbox("HTML 형식")
+            
+            if st.button("전송", use_container_width=True):
+                if not to or not subject or not body:
+                    st.error("받는 사람, 제목, 내용은 필수 입력 항목입니다.")
+                else:
+                    with st.spinner("이메일 전송 중..."):
+                        try:
+                            from gmail_utils import send_email
+                            to_list = [email.strip() for email in to.split(',') if email.strip()]
+                            cc_list = [email.strip() for email in cc.split(',') if email.strip()] if cc else None
+                            bcc_list = [email.strip() for email in bcc.split(',') if email.strip()] if bcc else None
+                            
+                            sent_message = send_email(
+                                st.session_state.gmail_service, 
+                                to_list, 
+                                subject, 
+                                body, 
+                                cc=cc_list, 
+                                bcc=bcc_list, 
+                                html=html_format
+                            )
+                            
+                            if sent_message:
+                                st.success(f"이메일이 성공적으로 전송되었습니다. (ID: {sent_message['id']})")
+                            else:
+                                st.error("이메일 전송에 실패했습니다.")
+                        except Exception as e:
+                            st.error(f"이메일 전송 중 오류 발생: {str(e)}")
+    
+    # --- 캘린더 탭 ---
+    with tab2:
+        st.header("캘린더")
+        
+        # 일정 목록 조회
+        if st.button("다가오는 일정 조회", use_container_width=True):
+            with st.spinner("일정을 불러오는 중..."):
+                try:
+                    from calendar_utils import list_upcoming_events
+                    events = list_upcoming_events(st.session_state.calendar_service)
+                    
+                    if not events:
+                        st.info("다가오는 일정이 없습니다.")
+                    else:
+                        for event in events:
+                            formatted = format_event_for_display(event)
+                            with st.expander(f"📅 {formatted['summary']}"):
+                                st.write(f"**시작:** {formatted['start']}")
+                                
+                                if 'location' in formatted:
+                                    st.write(f"**장소:** {formatted['location']}")
+                                
+                                if 'description' in formatted:
+                                    st.write(f"**설명:** {formatted['description']}")
+                                
+                                if 'attendees' in formatted:
+                                    st.write(f"**참석자:** {', '.join(formatted['attendees'])}")
+                                
+                                st.write(f"**ID:** {formatted['id']}")
+                                if 'link' in formatted:
+                                    st.markdown(f"[캘린더에서 보기]({formatted['link']})")
+                except Exception as e:
+                    st.error(f"일정 조회 중 오류 발생: {str(e)}")
+        
+        # 일정 추가
+        with st.expander("📝 일정 추가하기"):
+            summary = st.text_input("일정 제목")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                start_date = st.date_input("시작 날짜")
+                start_time = st.time_input("시작 시간")
+            with col2:
+                end_date = st.date_input("종료 날짜")
+                end_time = st.time_input("종료 시간")
+            
+            location = st.text_input("장소", placeholder="선택사항")
+            description = st.text_area("설명", placeholder="선택사항", height=100)
+            attendees = st.text_input("참석자", placeholder="이메일 주소 (쉼표로 구분하여 여러 명 지정 가능)")
+            
+            if st.button("일정 추가", use_container_width=True):
+                if not summary:
+                    st.error("일정 제목은 필수 입력 항목입니다.")
+                else:
+                    with st.spinner("일정 추가 중..."):
+                        try:
+                            from calendar_utils import create_calendar_event
+                            from datetime import datetime, timezone
+                            
+                            # datetime 객체 생성
+                            start_datetime = datetime.combine(start_date, start_time)
+                            end_datetime = datetime.combine(end_date, end_time)
+                            
+                            # 참석자 목록 처리
+                            attendee_list = [email.strip() for email in attendees.split(',') if email.strip()] if attendees else None
+                            
+                            event = create_calendar_event(
+                                st.session_state.calendar_service,
+                                summary=summary,
+                                location=location,
+                                description=description,
+                                start_time=start_datetime,
+                                end_time=end_datetime,
+                                attendees=attendee_list
+                            )
+                            
+                            if event:
+                                st.success(f"일정이 성공적으로 추가되었습니다. (ID: {event['id']})")
+                            else:
+                                st.error("일정 추가에 실패했습니다.")
+                        except Exception as e:
+                            st.error(f"일정 추가 중 오류 발생: {str(e)}")
+
 
 # --- 사이드바 UI: MCP 도구 추가 인터페이스로 변경 ---
 with st.sidebar.expander("MCP 도구 추가", expanded=False):
@@ -269,6 +505,11 @@ with st.sidebar.expander("MCP 도구 추가", expanded=False):
   "weather": {
     "command": "python",
     "args": ["./mcp_server_local.py"],
+    "transport": "stdio"
+  },
+  "gsuite": {
+    "command": "python",
+    "args": ["./gsuite_mcp_server.py"],
     "transport": "stdio"
   }
 }"""
