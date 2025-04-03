@@ -251,6 +251,11 @@ async def initialize_session(mcp_config=None):
                         "args": ["./mcp_server_local.py"],
                         "transport": "stdio",
                     },
+                    "gsuite": {
+                        "command": "python",
+                        "args": ["./gsuite_mcp_server.py"],
+                        "transport": "stdio",
+                    }
                 }
             client = MultiServerMCPClient(mcp_config)
             await client.__aenter__()
