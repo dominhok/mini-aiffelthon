@@ -49,16 +49,16 @@ load_dotenv(override=True)
 
 # 페이지 설정: 제목, 아이콘, 레이아웃 구성
 # 브라우저 탭에 표시될 제목과 아이콘이다.
-st.set_page_config(page_title="Agent with MCP Tools", page_icon="🧠", layout="wide")
+st.set_page_config(page_title="나만의 비서 나비", page_icon="🦋", layout="wide")
 
 # 사이드바 최상단에 저자 정보 추가 (다른 사이드바 요소보다 먼저 배치)
-st.sidebar.markdown("### ✍️ Made by [테디노트](https://youtube.com/c/teddynote) 🚀")
+st.sidebar.markdown("### 🦋 나만의 비서: 나비")
 st.sidebar.divider()  # 구분선 추가
 
 # 기존 페이지 타이틀 및 설명
 # 웹 페이지의 타이틀과 설명이다.
-st.title("🤖 Agent with MCP Tools")
-st.markdown("✨ MCP 도구를 활용한 ReAct 에이전트에게 질문해보세요.")
+st.title("🦋 나만의 비서: 나비")
+st.markdown("✨ **나비, 당신의 하루를 더 가볍게 만들어줄 스마트 비서!** ✨")
 
 # 세션 상태 초기화
 if "session_initialized" not in st.session_state:
