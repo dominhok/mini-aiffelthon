@@ -368,36 +368,48 @@ with st.sidebar.expander("Google 계정 연동", expanded=True):
     if not st.session_state.google_authenticated:
         st.write("Google 계정을 연동하여 Gmail과 캘린더를 사용할 수 있습니다.")
         
-        if st.button("Google 계정 연동하기", type="primary", use_container_width=True):
-            flow = create_oauth_flow(REDIRECT_URI)
-            auth_url = get_authorization_url(flow)
-            st.session_state.flow = flow
-            st.markdown(f"[Google 계정 인증하기]({auth_url})")
-            st.info("위 링크를 클릭하여 Google 계정에 로그인하고 권한을 허용해주세요.")
-            
-        # 인증 코드 입력 필드
-        auth_code = st.text_input("인증 코드 입력", placeholder="Google 인증 후 받은 코드를 입력하세요")
-        if auth_code and st.button("인증 완료", use_container_width=True):
+        # 1. 세션 상태에 flow 초기화
+        if 'flow' not in st.session_state:
+            st.session_state.flow = create_oauth_flow(REDIRECT_URI)
+        
+        # 2. URL에서 인증 코드 확인
+        query_params = st.query_params
+        if 'code' in query_params:
             try:
+                # 3. flow 객체가 없는 경우 재생성
+                if 'flow' not in st.session_state:
+                    st.session_state.flow = create_oauth_flow(REDIRECT_URI)
+                
+                # 4. 토큰 가져오기
+                auth_code = query_params['code']
                 credentials = fetch_token(st.session_state.flow, auth_code)
                 save_credentials(credentials)
+                
                 if initialize_google_services():
-                    st.success("✅ Google 계정 연동이 완료되었습니다!")
+                    st.session_state.google_authenticated = True
+                    st.query_params.clear()  # URL 파라미터 초기화
                     st.rerun()
             except Exception as e:
                 st.error(f"인증 오류: {str(e)}")
+        
+        # 5. 인증 버튼
+        if st.button("Google 계정 연동하기", type="primary", use_container_width=True):
+            auth_url = get_authorization_url(st.session_state.flow)
+            st.markdown(
+                f'<a href="{auth_url}" target="_self">인증 진행하기</a>',
+                unsafe_allow_html=True
+            )
     else:
         st.success("✅ Google 계정이 연동되었습니다.")
         if st.button("연동 해제", use_container_width=True):
-            # 토큰 파일 삭제
             token_path = Path("token.pickle")
             if token_path.exists():
                 token_path.unlink()
             st.session_state.google_authenticated = False
             st.session_state.gmail_service = None
             st.session_state.calendar_service = None
-            st.info("Google 계정 연동이 해제되었습니다.")
             st.rerun()
+
 
 # --- 폼 렌더링 함수 정의 --- 
 def render_email_form():
