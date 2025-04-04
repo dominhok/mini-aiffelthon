@@ -31,6 +31,7 @@ from langchain_core.messages.tool import ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.runnables import RunnableConfig
 from langchain_upstage import ChatUpstage
+from langchain_core.tools import tool
 
 # Google 인증 관련 모듈 임포트
 from google_auth import (
@@ -38,7 +39,8 @@ from google_auth import (
     save_credentials, load_credentials, is_authenticated,
     build_gmail_service, build_calendar_service
 )
-from calendar_utils import create_calendar_event
+from gmail_utils import format_email_for_display
+from calendar_utils import format_event_for_display, create_calendar_event
 from gmail_utils import send_email
 from datetime import datetime
 
@@ -47,16 +49,16 @@ load_dotenv(override=True)
 
 # 페이지 설정: 제목, 아이콘, 레이아웃 구성
 # 브라우저 탭에 표시될 제목과 아이콘이다.
-st.set_page_config(page_title="나만의 비서 나비", page_icon="🦋", layout="wide")
+st.set_page_config(page_title="Agent with MCP Tools", page_icon="🧠", layout="wide")
 
 # 사이드바 최상단에 저자 정보 추가 (다른 사이드바 요소보다 먼저 배치)
-st.sidebar.markdown("### 🦋 나만의 비서: 나비")
+st.sidebar.markdown("### ✍️ Made by [테디노트](https://youtube.com/c/teddynote) 🚀")
 st.sidebar.divider()  # 구분선 추가
 
 # 기존 페이지 타이틀 및 설명
 # 웹 페이지의 타이틀과 설명이다.
-st.title("🦋 나만의 비서: 나비")
-st.markdown("✨ **나비, 당신의 하루를 더 가볍게 만들어줄 스마트 비서!** ✨")
+st.title("🤖 Agent with MCP Tools")
+st.markdown("✨ MCP 도구를 활용한 ReAct 에이전트에게 질문해보세요.")
 
 # 세션 상태 초기화
 if "session_initialized" not in st.session_state:
@@ -323,8 +325,18 @@ async def initialize_session(mcp_config=None):
                 checkpointer=MemorySaver(),
                 prompt="""You are an intelligent and helpful assistant using tools. Respond in Korean.
 
-                **Available Tools:** You have tools for weather (`get_weather`), Gmail (`list_emails_tool`, `search_emails_tool`, `send_email_tool`, `modify_email_tool`), and Google Calendar (`list_events_tool`, `create_event_tool`).
+                **Available Tools:**
+                You have tools for:
+                - Weather (`get_weather`, `get_user_location`)
+                - Gmail (`list_emails_tool`, `search_emails_tool`, `send_email_tool`, `modify_email_tool`)
+                - Google Calendar (`list_events_tool`, `create_event_tool`)
 
+                **Weather Tool Usage:**
+                - If the user asks about the weather and does NOT specify a city or region:
+                1. Politely ask the user if you can access their current location.
+                2. If the user agrees, then call `get_user_location` to get the location.
+                3. Use the result with `get_weather` to answer the original question.
+                - If a city is mentioned (e.g., "서울 날씨 알려줘"), use `get_weather` directly with that city.
                 **CRITICAL RULE for Email/Calendar:**
                 If the user asks to send an email OR create a calendar event:
                 1.  You MUST attempt to call the corresponding tool (`send_email_tool` or `create_event_tool`) IMMEDIATELY in your first action.
@@ -366,48 +378,36 @@ with st.sidebar.expander("Google 계정 연동", expanded=True):
     if not st.session_state.google_authenticated:
         st.write("Google 계정을 연동하여 Gmail과 캘린더를 사용할 수 있습니다.")
         
-        # 1. 세션 상태에 flow 초기화
-        if 'flow' not in st.session_state:
-            st.session_state.flow = create_oauth_flow(REDIRECT_URI)
-        
-        # 2. URL에서 인증 코드 확인
-        query_params = st.query_params
-        if 'code' in query_params:
+        if st.button("Google 계정 연동하기", type="primary", use_container_width=True):
+            flow = create_oauth_flow(REDIRECT_URI)
+            auth_url = get_authorization_url(flow)
+            st.session_state.flow = flow
+            st.markdown(f"[Google 계정 인증하기]({auth_url})")
+            st.info("위 링크를 클릭하여 Google 계정에 로그인하고 권한을 허용해주세요.")
+            
+        # 인증 코드 입력 필드
+        auth_code = st.text_input("인증 코드 입력", placeholder="Google 인증 후 받은 코드를 입력하세요")
+        if auth_code and st.button("인증 완료", use_container_width=True):
             try:
-                # 3. flow 객체가 없는 경우 재생성
-                if 'flow' not in st.session_state:
-                    st.session_state.flow = create_oauth_flow(REDIRECT_URI)
-                
-                # 4. 토큰 가져오기
-                auth_code = query_params['code']
                 credentials = fetch_token(st.session_state.flow, auth_code)
                 save_credentials(credentials)
-                
                 if initialize_google_services():
-                    st.session_state.google_authenticated = True
-                    st.query_params.clear()  # URL 파라미터 초기화
+                    st.success("✅ Google 계정 연동이 완료되었습니다!")
                     st.rerun()
             except Exception as e:
                 st.error(f"인증 오류: {str(e)}")
-        
-        # 5. 인증 버튼
-        if st.button("Google 계정 연동하기", type="primary", use_container_width=True):
-            auth_url = get_authorization_url(st.session_state.flow)
-            st.markdown(
-                f'<a href="{auth_url}" target="_self">인증 진행하기</a>',
-                unsafe_allow_html=True
-            )
     else:
         st.success("✅ Google 계정이 연동되었습니다.")
         if st.button("연동 해제", use_container_width=True):
+            # 토큰 파일 삭제
             token_path = Path("token.pickle")
             if token_path.exists():
                 token_path.unlink()
             st.session_state.google_authenticated = False
             st.session_state.gmail_service = None
             st.session_state.calendar_service = None
+            st.info("Google 계정 연동이 해제되었습니다.")
             st.rerun()
-
 
 # --- 폼 렌더링 함수 정의 --- 
 def render_email_form():
