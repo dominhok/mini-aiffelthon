@@ -6,8 +6,8 @@ import anyio
 import os
 from pathlib import Path
 
-# nest_asyncio 적용: 이미 실행 중인 이벤트 루프 내에서 중첩 호출 허용
-nest_asyncio.apply()
+# # nest_asyncio 적용: 이미 실행 중인 이벤트 루프 내에서 중첩 호출 허용 -> 주석 처리
+# nest_asyncio.apply()
 
 # 전역 이벤트 루프 생성 및 재사용
 if "event_loop" not in st.session_state:
@@ -18,8 +18,8 @@ if "event_loop" not in st.session_state:
         asyncio.set_event_loop(loop)
     st.session_state.event_loop = loop
 
-# anyio 백엔드 설정
-os.environ["ANYIO_BACKEND"] = "asyncio"
+# # anyio 백엔드 설정 -> 주석 처리
+# os.environ["ANYIO_BACKEND"] = "asyncio"
 
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage
@@ -28,6 +28,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_teddynote.messages import astream_graph, random_uuid
 from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.messages.tool import ToolMessage
+from langchain_core.messages import SystemMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.runnables import RunnableConfig
 from langchain_upstage import ChatUpstage
@@ -71,9 +72,33 @@ if "session_initialized" not in st.session_state:
     st.session_state.calendar_service = None  # 캘린더 서비스 객체
 
     # 폼 표시 상태 변수 초기화
-    st.session_state.show_email_form_area = False 
+    st.session_state.show_email_form_area = False
     st.session_state.show_calendar_form_area = False
     st.session_state.just_submitted_form = False # 폼 제출 직후 상태 플래그
+    st.session_state.initial_greeting = None # 초기 환영 메시지 저장
+    st.session_state.needs_greeting_regeneration = False # 인증 후 인사말 재생성 필요 플래그
+
+def initialize_google_services():
+    """
+    Google 서비스(Gmail, 캘린더)를 초기화합니다.
+    """
+    if is_authenticated():
+        credentials = load_credentials()
+        st.session_state.gmail_service = build_gmail_service(credentials)
+        st.session_state.calendar_service = build_calendar_service(credentials)
+        st.session_state.google_authenticated = True
+        return True
+    return False
+
+# --- Google 서비스 사전 초기화 (토큰 파일 존재 시) --- START
+if not st.session_state.google_authenticated and is_authenticated():
+    print("DEBUG: Token file found, attempting pre-initialization of Google services.")
+    initialize_google_services()
+    if st.session_state.google_authenticated:
+         print("DEBUG: Google services pre-initialized successfully.")
+    else:
+         print("DEBUG: Google services pre-initialization failed (likely token issue).")
+# --- Google 서비스 사전 초기화 (토큰 파일 존재 시) --- END
 
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = random_uuid()
@@ -87,7 +112,195 @@ class StopStreamAndRerun(Exception):
     pass
 # --- 사용자 정의 예외 --- END
 
-# --- 함수 정의 부분 ---
+async def run_initial_tools_and_summarize():
+    """
+    앱 시작 시 필요한 도구를 호출하고 결과를 구조화하여 요약하고,
+    사용 가능한 기능을 안내하는 환영 메시지를 생성합니다.
+    Google 인증 상태에 따라 분기하여 처리합니다.
+    """
+    initial_greeting = "안녕하세요! 당신만의 비서 나비입니다. 무엇을 도와드릴까요? 🦋" # 기본 인사말
+    weather_result = "날씨 정보를 가져오는 데 실패했어요."
+    # calendar_result와 email_result는 인증 상태 분기 내에서 초기화
+
+    with st.spinner("🦋 비서 \'나비\'가 오늘의 정보를 준비하고 있어요..."):
+        try:
+            # LLM 모델 준비 확인 (공통)
+            llm = None
+            if hasattr(st.session_state, 'llm_model') and st.session_state.llm_model is not None:
+                llm = st.session_state.llm_model
+            else:
+                print("DEBUG: LLM model not found in session state for greeting generation.")
+                # LLM 없으면 기본 인사말 바로 반환 (기능 안내 포함)
+                return """안녕하세요! 비서 나비입니다 🦋
+정보 요약 기능을 사용하려면 LLM 설정이 필요해요.
+
+**제가 도와드릴 수 있는 일:**
+* 날씨 질문, 간단한 대화
+* (Google 계정 연동 시) 이메일 및 캘린더 관련 기능
+
+무엇을 도와드릴까요?"""
+
+            # MCP 클라이언트 및 기본 도구 준비 확인 (공통)
+            if not st.session_state.mcp_client:
+                print("DEBUG: MCP Client not ready for initial summary.")
+                # MCP 클라이언트 없으면 기본 인사말 반환
+                return """안녕하세요! 비서 나비입니다 🦋
+도구 서버에 연결할 수 없어 정보 조회가 불가능해요.
+
+**제가 도와드릴 수 있는 일:**
+* 간단한 대화
+
+무엇을 도와드릴까요?"""
+            
+            client = st.session_state.mcp_client
+            tools = client.get_tools()
+            weather_tool = next((t for t in tools if t.name == 'get_weather'), None)
+
+            # --- Google 인증 상태에 따른 분기 --- START
+            if st.session_state.google_authenticated:
+                # --- 인증된 사용자 로직 --- START
+                calendar_result = "가장 가까운 일정을 가져오는 데 실패했어요."
+                email_result = "중요한 이메일을 확인하는 데 실패했어요."
+                list_events_tool = next((t for t in tools if t.name == 'list_events_tool'), None)
+                list_emails_tool = next((t for t in tools if t.name == 'list_emails_tool'), None)
+
+                # 1. 날씨 정보 (인증 사용자)
+                if weather_tool:
+                    try:
+                        result = await weather_tool.ainvoke({"location": "서울"})
+                        weather_result = str(result)
+                    except Exception as e: print(f"ERROR invoking get_weather (auth): {e}")
+                else: weather_result = "날씨 도구를 찾을 수 없어요."
+
+                # 2. 가장 가까운 일정 (인증 사용자)
+                if list_events_tool:
+                    try:
+                        result = await list_events_tool.ainvoke({"max_results": 1})
+                        calendar_result = str(result)
+                        if not calendar_result or "다가오는 일정이 없습니다" in calendar_result or "일정을 찾을 수 없습니다" in calendar_result:
+                            calendar_result = "가장 가까운 예정된 일정이 없어요. 여유로운 하루를 보내세요!"
+                        elif "Google 계정 인증이 필요합니다" in calendar_result: calendar_result = "Google 계정 연동 오류."
+                    except Exception as e:
+                        print(f"ERROR invoking list_events_tool (auth): {e}")
+                        calendar_result = "일정 확인 중 오류 발생."
+                else: calendar_result = "캘린더 도구를 찾을 수 없어요."
+
+                # 3. 최근 10개 이메일 (인증 사용자, LLM 요약용)
+                if list_emails_tool:
+                    try:
+                        result = await list_emails_tool.ainvoke({"max_results": 10})
+                        email_result = str(result)
+                        if not email_result or "메일을 찾을 수 없습니다" in email_result: email_result = "최근 도착 메일 없음."
+                    except Exception as e:
+                        print(f"ERROR invoking list_emails_tool (auth): {e}")
+                        email_result = "이메일 확인 중 오류 발생."
+                else: email_result = "이메일 도구를 찾을 수 없어요."
+
+                # 4. LLM 프롬프트 (인증 사용자)
+                prompt = f"""당신은 사용자 비서 '나비'입니다. 다음 정보를 바탕으로 사용자에게 **정중하면서도 친근하고 도움이 되는 어조**로, 구조화된 환영 인사를 **'~습니다' 체**로 생성해주세요. **과도한 격식 표현(~님, 친애하는 등)이나 너무 가벼운 말투(반말, 속어)는 피해주세요.**
+
+**환영 인사 구조:**
+1. **정중하고 친근한** 인사말 (예: "안녕하세요! 당신의 스마트 비서, 나비입니다. 🦋" 또는 "오늘 하루, 나비와 함께 가볍게 시작해 보세요! 🦋")
+2. **오늘의 정보 요약** 섹션 (날씨, 가장 가까운 일정, 중요 이메일 요약 - 각 항목은 주어진 정보를 바탕으로 **정중하고 친근하게** 생성)
+3. **제가 도와드릴 수 있는 일** 섹션 (아래 목록 전체 안내, **명확하고 친절하게**)
+    * 이메일: 새 메일 확인, 특정 메일 검색, 이메일 작성 및 보내기
+    * 캘린더: 일정 확인, 새로운 일정 추가
+    * 날씨: 현재 또는 특정 지역 날씨 질문
+    * 기타: 간단한 대화나 궁금한 점 질문하기
+4. **도움을 제안하는** 마무리 인사 (예: "무엇을 도와드릴까요?" 또는 "어떤 작업을 시작할까요?")
+
+**주어진 정보:**
+[날씨] {weather_result}
+[일정] {calendar_result}
+[최근 이메일 목록] {email_result}
+
+**정중하면서도 친근한 '~습니다' 체로 구조화된 환영 인사를 작성해주세요:**
+"""
+                try:
+                    print("DEBUG: Invoking LLM for authenticated user greeting...")
+                    response = await llm.ainvoke(prompt)
+                    initial_greeting = response.content
+                    print(f"DEBUG: Generated authenticated greeting: {initial_greeting}")
+                except Exception as e:
+                    print(f"ERROR generating authenticated greeting with LLM: {e}")
+                    initial_greeting = f"""안녕하세요! 비서 나비입니다 🦋
+
+**오늘의 정보 요약:**
+* 날씨: {weather_result}
+* 가까운 일정: {calendar_result}
+* 이메일: {email_result} (요약 실패)
+
+**제가 도와드릴 수 있는 일:**
+* 이메일: 확인, 검색, 작성/전송
+* 캘린더: 일정 확인, 새 일정 추가
+* 날씨: 현재 또는 특정 지역 날씨 질문
+* 기타: 간단한 대화
+
+무엇을 도와드릴까요?"""
+                # --- 인증된 사용자 로직 --- END
+            
+            else:
+                # --- 미인증 사용자 로직 --- START
+                # 1. 날씨 정보 (미인증 사용자)
+                if weather_tool:
+                    try:
+                        result = await weather_tool.ainvoke({"location": "서울"})
+                        weather_result = str(result)
+                    except Exception as e: print(f"ERROR invoking get_weather (unauth): {e}")
+                else: weather_result = "날씨 도구를 찾을 수 없어요."
+                
+                # 2. LLM 프롬프트 (미인증 사용자)
+                prompt = f"""당신은 사용자 비서 '나비'입니다. 다음 정보를 바탕으로 사용자에게 **정중하면서도 친근하고 도움이 되는 어조**로, 구조화된 환영 인사를 **'~습니다' 체**로 생성해주세요. **과도한 격식 표현(~님, 친애하는 등)이나 너무 가벼운 말투(반말, 속어)는 피해주세요.**
+
+**환영 인사 구조:**
+1. **정중하고 친근한** 인사말 (예: "안녕하세요! 당신의 스마트 비서, 나비입니다. 🦋")
+2. **오늘의 날씨 정보** 섹션 (주어진 날씨 정보 요약, **정중하고 친근하게**)
+3. **Google 계정 연동 안내** 섹션 (연동 시 이메일/캘린더 기능 사용 가능함을 **명확하고 친절하게** 안내)
+4. **현재 도와드릴 수 있는 일** 섹션 (아래 목록 안내, **명확하고 친절하게**)
+    * 날씨: 현재 또는 특정 지역 날씨 질문
+    * 기타: 간단한 대화나 궁금한 점 질문하기
+5. **도움을 제안하는** 마무리 인사 (예: "무엇을 도와드릴까요?")
+
+**주어진 정보:**
+[날씨] {weather_result}
+
+**정중하면서도 친근한 '~습니다' 체로 구조화된 환영 인사를 작성해주세요:**
+"""
+                try:
+                    print("DEBUG: Invoking LLM for unauthenticated user greeting...")
+                    response = await llm.ainvoke(prompt)
+                    initial_greeting = response.content
+                    print(f"DEBUG: Generated unauthenticated greeting: {initial_greeting}")
+                except Exception as e:
+                    print(f"ERROR generating unauthenticated greeting with LLM: {e}")
+                    initial_greeting = f"""안녕하세요! 비서 나비입니다 🦋
+
+**오늘의 날씨:**
+* {weather_result}
+
+**Google 계정을 연동하시면** 이메일 확인 및 작성, 캘린더 일정 관리 기능도 사용할 수 있어요!
+
+**현재 도와드릴 수 있는 일:**
+* 날씨 질문
+* 간단한 대화
+
+무엇을 도와드릴까요?"""
+                # --- 미인증 사용자 로직 --- END
+            # --- Google 인증 상태에 따른 분기 --- END
+
+        except Exception as e:
+            print(f"ERROR during initial tool run and summary: {e}")
+            # 전체 프로세스 오류 시 기본 인사말 (공통)
+            initial_greeting = """안녕하세요! 비서 나비입니다 🦋 정보를 준비하는 중 문제가 발생했어요.
+
+**제가 도와드릴 수 있는 일:**
+* 날씨 질문, 간단한 대화
+* (Google 계정 연동 시) 이메일 및 캘린더 관련 기능
+
+필요하신 도움이 있다면 말씀해주세요!"""
+
+    return initial_greeting
+
 
 def print_message():
     """
@@ -112,29 +325,23 @@ def print_message():
                 st.markdown(message["content"])
     
     # 마지막 메시지 특별 처리 로직 제거
-    # if st.session_state.history:
-    #     last_message = st.session_state.history[-1]
-    #     if last_message["role"] != "assistant":
-    #         ...
 
 
-def get_streaming_callback(text_placeholder, tool_placeholder):
+def get_streaming_callback(text_placeholder):
     accumulated_text = []
-    expander_content_lines = [] # 현재 턴의 확장 패널 내용 관리
     tool_results = []
-    formatted_tool_results_for_history = [] # 히스토리 저장용
+    formatted_tool_results_for_history = [] # 히스토리 저장용은 유지
 
     def callback_func(message: dict):
-        nonlocal accumulated_text, expander_content_lines, tool_results, formatted_tool_results_for_history
+        nonlocal accumulated_text, tool_results, formatted_tool_results_for_history
         message_content = message.get("content", None)
-        update_expander = False # 확장 패널 업데이트 플래그 복원
 
         if isinstance(message_content, AIMessageChunk):
             # 에이전트 텍스트 처리
             if hasattr(message_content, "content") and isinstance(message_content.content, str):
                  accumulated_text.append(message_content.content)
                  complete_response = "".join(accumulated_text)
-                 text_placeholder.markdown(complete_response) # 메인 채팅창 업데이트
+                 text_placeholder.markdown(complete_response) # 텍스트는 실시간 업데이트 유지
 
             # 도구 호출 청크 처리
             if hasattr(message_content, 'tool_call_chunks') and message_content.tool_call_chunks:
@@ -169,14 +376,12 @@ def get_streaming_callback(text_placeholder, tool_placeholder):
                             # --- 폼 제출 직후 상태 확인 로직 --- END
                             
                             # 사용자 의도 확인 로직 제거됨
-                            # if user_intent_confirmed:
-                            #    ...
 
         elif isinstance(message_content, ToolMessage):
-            # ToolMessage 처리: 내부 저장 + history용 포맷 + expander 즉시 업데이트
+            # ToolMessage 처리: 내부 저장 + history용 포맷만 수행
             tool_result_str = str(message_content.content)
             tool_name = message_content.name
-            print(f"DEBUG (Callback): Received ToolMessage for {tool_name}. Storing, formatting, AND updating expander.")
+            print(f"DEBUG (Callback): Received ToolMessage for {tool_name}. Storing and formatting for history.")
 
             # 결과 내부 저장
             try:
@@ -185,43 +390,51 @@ def get_streaming_callback(text_placeholder, tool_placeholder):
             except json.JSONDecodeError:
                 tool_results.append(tool_result_str)
 
-            # 결과 포맷팅 (history 저장용) - 모든 도구 결과 원본 그대로 표시
+            # 결과 포맷팅 (history 저장용 - 기존과 동일)
             formatted_result = ""
-            try: # JSON 시도
+            try: 
                 parsed_res = json.loads(tool_result_str)
                 formatted_result = f"```json\n{json.dumps(parsed_res, indent=2, ensure_ascii=False)}\n```"
-            except json.JSONDecodeError: # 텍스트 처리
-                # 모든 텍스트 응답을 원본 그대로 표시 (특별 처리 없음)
+            except json.JSONDecodeError: 
                 formatted_result = f"```text\n{tool_result_str}\n```"
 
-            # 포맷된 결과를 두 리스트 모두에 추가
+            # 포맷된 결과를 history 저장용 리스트에 추가
             result_info = f"**결과 ({tool_name}):**\n{formatted_result}"
-            expander_content_lines.append(result_info) # 현재 턴 expander용
-            formatted_tool_results_for_history.append(result_info) # 히스토리 저장용
-
-            update_expander = True # 확장 패널 업데이트 필요
-
-        # 확장 패널 내용 즉시 업데이트 로직 복원
-        if update_expander and expander_content_lines:
-            with tool_placeholder.expander("🔧 도구 실행 결과", expanded=False):
-                st.markdown("\n---\n".join(expander_content_lines))
+            formatted_tool_results_for_history.append(result_info)
 
         return None
 
     return callback_func, accumulated_text, tool_results, formatted_tool_results_for_history
 
 
-async def process_query(query, text_placeholder, tool_placeholder, timeout_seconds=300):
+async def process_query(query, text_placeholder, timeout_seconds=300):
     """
     사용자 질문을 처리하고 응답을 생성합니다.
+    # 폼 제출 후에는 요약된 시스템 메시지를 주입합니다. -> 제거
     """
     try:
         if st.session_state.agent:
             streaming_callback, accumulated_text_obj, final_tool_results, formatted_tool_results_for_history = (
-                get_streaming_callback(text_placeholder, tool_placeholder)
+                get_streaming_callback(text_placeholder)
             )
-            response = None # 응답 변수 초기화
-            final_text = "" # 최종 텍스트 초기화
+            response = None 
+            final_text = "" 
+            
+            # # 폼 제출 후 전달될 초기 메시지 구성 -> 제거
+            # messages_to_send = [] 
+            # if "pending_initial_messages" in st.session_state:
+            #     pending_messages = st.session_state.pop("pending_initial_messages") 
+            #     try:
+            #         messages_to_send = [...]
+            #         print(f"DEBUG: Injecting pending messages: ...")
+            #     except Exception as msg_e:
+            #         print(f"ERROR converting pending messages: {msg_e}")
+            #         messages_to_send = []
+
+            # 현재 사용자 쿼리만 HumanMessage로 구성
+            messages_to_send = [HumanMessage(content=query)]
+            print(f"DEBUG: Final messages being sent to agent: {[m.type for m in messages_to_send]}")
+
             try:
                 try:
                     loop = asyncio.get_running_loop()
@@ -233,11 +446,11 @@ async def process_query(query, text_placeholder, tool_placeholder, timeout_secon
                     response = await asyncio.wait_for(
                         astream_graph(
                             st.session_state.agent,
-                            {"messages": [HumanMessage(content=query)]},
+                            {"messages": messages_to_send}, # 현재 사용자 입력만 전달
                             callback=streaming_callback,
                             config=RunnableConfig(
                                 recursion_limit=200,
-                                thread_id=st.session_state.thread_id,
+                                thread_id=st.session_state.thread_id, # 새 thread_id 사용됨
                                 max_concurrency=1,
                             ),
                         ),
@@ -250,9 +463,7 @@ async def process_query(query, text_placeholder, tool_placeholder, timeout_secon
             except StopStreamAndRerun:
                 # 콜백에서 스트림 중단 요청 감지
                 print("DEBUG (process_query): StopStreamAndRerun caught. Stream stopped early for rerun.")
-                # final_text는 콜백에서 예외 발생 전까지 누적된 내용이 될 수 있음
                 final_text = "".join(accumulated_text_obj).strip() 
-                # 응답 객체는 None 또는 부분적인 상태일 수 있음, 오류 방지 위해 빈 dict 설정
                 response = {} 
 
             except asyncio.TimeoutError:
@@ -316,6 +527,9 @@ async def initialize_session(mcp_config=None):
                 temperature=0.0,
                 max_tokens=20000
             )
+            # --- 추가: LLM 모델 인스턴스를 세션 상태에 저장 ---
+            st.session_state.llm_model = model
+            # --- 추가 끝 ---
             
             agent = create_react_agent(
                 model,
@@ -325,16 +539,21 @@ async def initialize_session(mcp_config=None):
 
                 **Available Tools:** You have tools for weather (`get_weather`), Gmail (`list_emails_tool`, `search_emails_tool`, `send_email_tool`, `modify_email_tool`), and Google Calendar (`list_events_tool`, `create_event_tool`).
 
-                **CRITICAL RULE for Email/Calendar:**
-                If the user asks to send an email OR create a calendar event:
-                1.  You MUST attempt to call the corresponding tool (`send_email_tool` or `create_event_tool`) IMMEDIATELY in your first action.
-                2.  Call the tool even if you have no details (use empty arguments: {}).
-                3.  DO NOT ask the user for details like recipient, subject, time, etc., in the chat for these requests. The system will handle missing information.
+                **VERY IMPORTANT RULES (Tool Usage):**
+                1. You MUST **ONLY** use the tools listed in 'Available Tools'.
+                2. **NEVER** attempt to use tools that are not listed.
+                3. If the user's request is unrelated to the available tools or can be answered without tools, respond directly.
 
-                For any other request (listing emails, weather, general chat), identify the correct tool or answer directly if appropriate.
+                **CRITICAL RULE for Specific Phrases (Form Trigger):**
+                - If the user's message is EXACTLY "일정 추가" or "일정 추가해" or "add event", the correct first step is to use the `create_event_tool` with empty arguments `{}`. **Do not ask for details first.**
+                - If the user's message is EXACTLY "메일 보내줘" or "이메일 작성" or "send email", the correct first step is to use the `send_email_tool` with empty arguments `{}`. **Do not ask for details first.**
+                - The system will handle prompting for details via a form after these specific calls.
+
+                **Other Requests:**
+                For any other request (including requests to add events or send emails *with* details provided, listing emails, weather, etc.), identify the correct tool from 'Available Tools' or answer directly if appropriate. Use the provided details if available when calling tools.
 
                 **Handling Tool Results (ToolMessage):**
-                - If the tool returns data (like email lists, weather info, success/error messages), incorporate this information into your final response to the user. Be clear and helpful.
+                - Incorporate tool results into your final response clearly and helpfully.
                 """,
             )
             st.session_state.agent = agent
@@ -347,17 +566,6 @@ async def initialize_session(mcp_config=None):
         st.error(traceback.format_exc())
         return False
 
-def initialize_google_services():
-    """
-    Google 서비스(Gmail, 캘린더)를 초기화합니다.
-    """
-    if is_authenticated():
-        credentials = load_credentials()
-        st.session_state.gmail_service = build_gmail_service(credentials)
-        st.session_state.calendar_service = build_calendar_service(credentials)
-        st.session_state.google_authenticated = True
-        return True
-    return False
 
 
 
@@ -386,17 +594,25 @@ with st.sidebar.expander("Google 계정 연동", expanded=True):
                 if initialize_google_services():
                     st.session_state.google_authenticated = True
                     st.query_params.clear()  # URL 파라미터 초기화
+                    # --- 수정: 직접 호출 대신 플래그 설정 ---
+                    st.session_state.needs_greeting_regeneration = True # 인사말 재생성 필요 플래그 설정
+                    # 이전에 추가했던 try-except 블록 제거
+                    # --- 수정 끝 ---
                     st.rerun()
             except Exception as e:
                 st.error(f"인증 오류: {str(e)}")
-        
-        # 5. 인증 버튼
-        if st.button("Google 계정 연동하기", type="primary", use_container_width=True):
-            auth_url = get_authorization_url(st.session_state.flow)
-            st.markdown(
-                f'<a href="{auth_url}" target="_self">인증 진행하기</a>',
-                unsafe_allow_html=True
-            )
+        else: # 인증 코드가 없을 때 버튼 표시
+            # 5. 인증 버튼 (st.link_button 사용)
+            try:
+                auth_url = get_authorization_url(st.session_state.flow)
+                st.link_button(
+                    "Google 계정 연동하기", 
+                    auth_url, 
+                    type="primary", 
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"인증 URL 생성 중 오류 발생: {str(e)}")
     else:
         st.success("✅ Google 계정이 연동되었습니다.")
         if st.button("연동 해제", use_container_width=True):
@@ -406,6 +622,7 @@ with st.sidebar.expander("Google 계정 연동", expanded=True):
             st.session_state.google_authenticated = False
             st.session_state.gmail_service = None
             st.session_state.calendar_service = None
+            # 연동 해제 시에는 재생성 플래그 설정 불필요
             st.rerun()
 
 
@@ -427,7 +644,7 @@ def render_email_form():
             else:
                 with st.spinner("이메일 전송 중..."):
                     try:
-                        from gmail_utils import send_email
+                        # from gmail_utils import send_email # 상단에서 이미 import 함
                         to_list = [email.strip() for email in to.split(',') if email.strip()]
                         cc_list = [email.strip() for email in cc.split(',') if email.strip()] if cc else None
                         bcc_list = [email.strip() for email in bcc.split(',') if email.strip()] if bcc else None
@@ -445,9 +662,17 @@ def render_email_form():
                         if sent_message:
                             success_msg = f"이메일이 성공적으로 전송되었습니다. (ID: {sent_message['id']})"
                             st.success(success_msg)
-                            st.session_state.history.append({"role": "assistant", "content": f"✅ {success_msg}"})
-                            st.session_state.show_email_form_area = False # 성공 시 폼 숨김
-                            st.session_state.just_submitted_form = True # 폼 제출 성공 플래그 설정
+
+                            # 2. 새 thread_id 생성 (유지)
+                            st.session_state.thread_id = random_uuid()
+                            print(f"DEBUG: Email form submitted. New thread_id: {st.session_state.thread_id}. Context reset.")
+
+                            # 3. 사용자 표시용 히스토리 업데이트 (유지)
+                            st.session_state.history.append({"role": "assistant", "content": f"✅ {success_msg} 다른 도움이 필요하시면 말씀해주세요."})
+                            
+                            # 4. 폼 숨기기 및 새로고침 (유지)
+                            st.session_state.show_email_form_area = False
+                            st.rerun()
                         else:
                             error_msg = "이메일 전송에 실패했습니다."
                             st.error(error_msg)
@@ -458,8 +683,6 @@ def render_email_form():
                         st.error(error_msg)
                         # 오류 메시지를 히스토리에 추가
                         st.session_state.history.append({"role": "assistant", "content": f"❌ {error_msg}"})
-            # 폼 제출 후 rerun이 필요할 수 있음 (상태 변경 반영 위해) - 제거
-            # st.rerun()
 
 def render_calendar_form():
     with st.form(key='calendar_form_area', clear_on_submit=True):
@@ -485,8 +708,8 @@ def render_calendar_form():
             else:
                 with st.spinner("일정 추가 중..."):
                     try:
-                        from calendar_utils import create_calendar_event
-                        from datetime import datetime
+                        # from calendar_utils import create_calendar_event # 상단에서 이미 import 함
+                        # from datetime import datetime # 상단에서 이미 import 함
 
                         start_datetime = datetime.combine(start_date, start_time)
                         end_datetime = datetime.combine(end_date, end_time)
@@ -505,9 +728,17 @@ def render_calendar_form():
                         if event:
                             success_msg = f"일정이 성공적으로 추가되었습니다. (ID: {event['id']})"
                             st.success(success_msg)
-                            st.session_state.history.append({"role": "assistant", "content": f"✅ {success_msg}"})
-                            st.session_state.show_calendar_form_area = False # 성공 시 폼 숨김
-                            st.session_state.just_submitted_form = True # 폼 제출 성공 플래그 설정
+
+                            # 2. 새 thread_id 생성 (유지)
+                            st.session_state.thread_id = random_uuid()
+                            print(f"DEBUG: Calendar form submitted. New thread_id: {st.session_state.thread_id}. Context reset.")
+
+                            # 3. 사용자 표시용 히스토리 업데이트 (유지)
+                            st.session_state.history.append({"role": "assistant", "content": f"✅ {success_msg} 다른 도움이 필요하시면 말씀해주세요."})
+                            
+                            # 4. 폼 숨기기 및 새로고침 (유지)
+                            st.session_state.show_calendar_form_area = False
+                            st.rerun()
                         else:
                             error_msg = "일정 추가에 실패했습니다."
                             st.error(error_msg)
@@ -518,8 +749,6 @@ def render_calendar_form():
                         st.error(error_msg)
                         # 오류 메시지를 히스토리에 추가
                         st.session_state.history.append({"role": "assistant", "content": f"❌ {error_msg}"})
-            # 폼 제출 후 rerun이 필요할 수 있음 (상태 변경 반영 위해) - 제거
-            # st.rerun()
 
 # --- 사이드바 UI: MCP 도구 추가 인터페이스로 변경 ---
 with st.sidebar.expander("MCP 도구 추가", expanded=False):
@@ -668,7 +897,7 @@ with st.sidebar.expander("MCP 도구 추가", expanded=False):
             1. JSON 형식이 올바른지 확인하세요.
             2. 모든 키는 큰따옴표(")로 감싸야 합니다.
             3. 문자열 값도 큰따옴표(")로 감싸야 합니다.
-            4. 문자열 내에서 큰따옴표를 사용할 경우 이스케이프(\\")해야 합니다.
+            4. 문자열 내에서 큰따옴표를 사용할 경우 이스케이프(\\\")해야 합니다.
             """
             )
         except Exception as e:
@@ -738,7 +967,26 @@ with st.sidebar:
             progress_bar.progress(100)
 
             if success:
-                st.success("✅ 새로운 MCP 도구 설정이 적용되었습니다.")
+                # 초기 인사말 재생성 시도
+                try:
+                     greeting = st.session_state.event_loop.run_until_complete(
+                         run_initial_tools_and_summarize()
+                     )
+                     st.session_state.initial_greeting = greeting
+                     # 히스토리 맨 앞에 새 인사말 삽입
+                     if not st.session_state.history:
+                         st.session_state.history.insert(0, {"role": "assistant", "content": greeting})
+                     # 히스토리 업데이트 로직 추가
+                     if st.session_state.history:
+                         st.session_state.history[0]["content"] = greeting
+                except Exception as e:
+                     print(f"Error running initial summary function: {e}")
+                     # 오류 발생 시 대체 메시지로 history 업데이트 또는 삽입
+                     error_greeting = "안녕하세요! 비서 나비입니다. 정보를 다시 불러오는 중 문제가 발생했어요." 
+                     st.session_state.initial_greeting = error_greeting
+                     if st.session_state.history:
+                          st.session_state.history[0]["content"] = error_greeting
+                # st.stop() # 재초기화 후에는 중단하지 않고 rerun으로 진행
             else:
                 st.error("❌ 새로운 MCP 도구 설정 적용에 실패하였습니다.")
 
@@ -748,19 +996,68 @@ with st.sidebar:
 
 # --- 기본 세션 초기화 (초기화되지 않은 경우) ---
 if not st.session_state.session_initialized:
-    st.info("🔄 MCP 서버와 에이전트를 초기화합니다. 잠시만 기다려주세요...")
-    success = st.session_state.event_loop.run_until_complete(initialize_session())
+    # with st.spinner("🦋 비서 '나비'를 깨우고 있어요... (초기 설정 중)"): # 스피너 제거
+    success = False
+    try:
+         success = st.session_state.event_loop.run_until_complete(initialize_session())
+    except Exception as initial_init_e:
+         print(f"Critical error during initial session initialization: {initial_init_e}")
+         st.error(f"❌ 시스템 초기화 중 심각한 오류 발생: {initial_init_e}. 페이지를 새로고침하거나 관리자에게 문의하세요.")
+         st.stop() # 치명적 오류 시 중단
+
     if success:
-        st.success(
-            f"✅ 초기화 완료! {st.session_state.tool_count}개의 도구가 로드되었습니다."
+        # 초기 인사말 재생성 시도
+        if st.session_state.initial_greeting is None:
+             try:
+                 greeting = st.session_state.event_loop.run_until_complete(
+                     run_initial_tools_and_summarize()
+                 )
+                 st.session_state.initial_greeting = greeting
+                 # 히스토리 맨 앞에 새 인사말 삽입
+                 if not st.session_state.history:
+                     st.session_state.history.insert(0, {"role": "assistant", "content": greeting})
+                 # 히스토리 업데이트 로직 추가
+                 if st.session_state.history:
+                     st.session_state.history[0]["content"] = greeting
+             except Exception as e:
+                 print(f"Error running initial summary function: {e}")
+                 # 오류 발생 시 대체 메시지로 history 업데이트 또는 삽입
+                 error_greeting = "안녕하세요! 비서 나비입니다. 정보를 다시 불러오는 중 문제가 발생했어요." 
+                 st.session_state.initial_greeting = error_greeting
+                 if st.session_state.history:
+                      st.session_state.history[0]["content"] = error_greeting
+            # st.stop() # 초기화 성공 후에는 중단하지 않음
+        else:
+            # initialize_session 내부에서 이미 오류 메시지를 표시했을 것이므로 추가 메시지는 생략
+            st.error("❌ 초기화에 실패했습니다. 페이지를 새로고침하거나 설정을 확인해주세요.")
+            st.stop() # 초기화 실패 시 중단
+
+
+# --- 추가: 인증 후 인사말 재생성 플래그 확인 및 실행 ---
+if st.session_state.get("needs_greeting_regeneration", False):
+    print("DEBUG: Regenerating greeting based on flag (likely after Google Auth).")
+    try:
+        new_greeting = st.session_state.event_loop.run_until_complete(
+            run_initial_tools_and_summarize()
         )
-    else:
-        st.error("❌ 초기화에 실패했습니다. 페이지를 새로고침해 주세요.")
+        st.session_state.initial_greeting = new_greeting
+        # 히스토리 맨 앞 업데이트 또는 삽입
+        if st.session_state.history: # history가 있으면 첫 메시지 업데이트
+            st.session_state.history[0]["content"] = new_greeting
+        else: # history가 비었으면 맨 앞에 삽입
+            st.session_state.history.insert(0, {"role": "assistant", "content": new_greeting})
+        # 초기화 성공 후 딱 한 번만 초기 인사말 생성 시도
+        st.session_state.needs_greeting_regeneration = False # 플래그 리셋
+    except Exception as e_regen:
+        print(f"Error regenerating greeting based on flag: {e_regen}")
+        # 오류 발생 시 대체 메시지로 history 업데이트 또는 삽입
+        error_greeting = "안녕하세요! 비서 나비입니다. 정보를 다시 불러오는 중 문제가 발생했어요." 
+        st.session_state.initial_greeting = error_greeting
+        if st.session_state.history:
+            st.session_state.history[0]["content"] = error_greeting
+        st.session_state.needs_greeting_regeneration = False # 오류 시에도 일단 플래그 리셋
+    st.rerun() # 오류 메시지라도 표시
 
-
-# Google 서비스 초기화 (인증된 경우)
-if not st.session_state.google_authenticated and is_authenticated():
-    initialize_google_services()
 
 # --- 대화 기록 출력 ---
 print_message()
@@ -774,32 +1071,52 @@ if user_query:
         st.session_state.history.append({"role": "user", "content": user_query})
 
         with st.chat_message("assistant"):
-            tool_placeholder = st.empty()
-            text_placeholder = st.empty()
+            text_placeholder = st.empty() # 최종 응답 표시 영역
+            
+            # 폼 표시 상태 초기화 (새 질문 시작 시)
+            st.session_state.show_email_form_area = False
+            st.session_state.show_calendar_form_area = False
+
             resp, final_text, final_tool_results, formatted_tool_results_for_history = (
                 st.session_state.event_loop.run_until_complete(
-                    process_query(user_query, text_placeholder, tool_placeholder)
+                    process_query(user_query, text_placeholder)
                 )
             )
+
+            # ---- 응답 완료 후 최종 결과 표시 ---- START
+            final_output_content = final_text # 최종 텍스트
+            # 도구 결과가 있으면 텍스트 뒤에 확장 패널로 추가
+            if formatted_tool_results_for_history:
+                tool_output_markdown = "\n\n---\n".join(formatted_tool_results_for_history)
+                # text_placeholder에 바로 expander를 그릴 수 없으므로, 
+                # st.expander를 사용하여 같은 컬럼에 추가합니다.
+                with st.expander("🔧 도구 실행 결과", expanded=True): # 처음엔 펼쳐서 보여주기
+                    st.markdown(tool_output_markdown)
+            
+            # 최종 텍스트 업데이트 (텍스트가 변경되었을 경우를 대비)
+            text_placeholder.markdown(final_output_content)
+            # ---- 응답 완료 후 최종 결과 표시 ---- END
+
         if "error" in resp:
             st.error(resp["error"])
         else:
             # 에이전트의 최종 응답 및 포맷된 도구 결과를 히스토리에 추가
-            if final_text or formatted_tool_results_for_history: # 텍스트 또는 도구 결과가 있으면 기록
-                history_entry = {"role": "assistant", "content": final_text}
-                if formatted_tool_results_for_history:
-                    # 도구 결과 내용을 개행으로 합쳐서 저장
-                    history_entry["tool_output"] = "\n---\n".join(formatted_tool_results_for_history)
-                # rerun 플래그가 False일 때만 최종 응답 기록 (폼 표시 시 불완전 응답 방지)
-                if not st.session_state.get("rerun_needed", False):
-                     st.session_state.history.append(history_entry)
+            if not st.session_state.get("rerun_needed", False):
+                if final_text or formatted_tool_results_for_history: 
+                    history_entry = {"role": "assistant", "content": final_text}
+                    if formatted_tool_results_for_history:
+                        history_entry["tool_output"] = "\n---\n".join(formatted_tool_results_for_history)
+                    st.session_state.history.append(history_entry)
+            else:
+                 print("DEBUG: Rerun needed, skipping history append for potentially incomplete response.")
+
     else:
         st.warning("⏳ 시스템이 아직 초기화 중입니다. 잠시 후 다시 시도해주세요.")
 
 # --- 메인 스크립트 플로우: 조건부 rerun 처리 --- START
 if st.session_state.get("rerun_needed", False):
     print("DEBUG (Main Loop): Rerun needed flag detected. Executing st.rerun().")
-    st.session_state.rerun_needed = False # 플래그 리셋
+    st.session_state.rerun_needed = False # 플래그 리셋 후 rerun
     st.rerun()
 # --- 메인 스크립트 플로우: 조건부 rerun 처리 --- END
 
@@ -813,22 +1130,10 @@ if st.session_state.get("show_calendar_form_area", False):
 # --- 사이드바: 시스템 정보 표시 ---
 with st.sidebar:
     st.subheader("🔧 시스템 정보")
-    st.write(f"🛠️ MCP 도구 수: {st.session_state.get('tool_count', '초기화 중...')}")
-    st.write("🧠 모델: Solar Pro")
+    st.write(f"🛠️ MCP 도구 수: {st.session_state.get('tool_count', 'N/A')}")
+    # LLM 모델 이름 표시 (세션 상태에 저장된 것 기준)
+    llm_model_name = getattr(st.session_state.get('llm_model'), 'model', 'Solar Pro') if st.session_state.get('llm_model') else 'Solar Pro'
+    st.write(f"🧠 모델: {llm_model_name}")
 
-    # 구분선 추가 (시각적 분리)
+    # 구분선 추가
     st.divider()
-
-    # 사이드바 최하단에 대화 초기화 버튼 추가
-    if st.button("🔄 대화 초기화", use_container_width=True, type="primary"):
-        # thread_id 초기화
-        st.session_state.thread_id = random_uuid()
-
-        # 대화 히스토리 초기화
-        st.session_state.history = []
-
-        # 알림 메시지
-        st.success("✅ 대화가 초기화되었습니다.")
-
-        # 페이지 새로고침
-        st.rerun()
