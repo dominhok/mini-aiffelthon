@@ -3,7 +3,6 @@ langchain==0.3.21
 langgraph==0.3.21
 langchain-core==0.3.49
 langchain-community==0.3.20
-langchain-upstage==0.3.45
 langchain-mcp-adapters==0.0.5
 langchain-teddynote==0.3.45
 mcp==1.4.1
@@ -186,4 +185,27 @@ websocket-client==1.8.0
 widgetsnbextension==4.0.13
 xxhash==3.5.0
 yarl==1.18.0
-zstandard==0.23.0 
+zstandard==0.23.0
+traitlets==5.14.3
+types-requests==2.32.0.20250328
+typing-extensions==4.13.0
+typing-inspect==0.9.0
+typing-inspection==0.4.0
+tzdata==2025.2
+uri-template==1.3.0
+urllib3==2.3.0
+uvicorn==0.34.0
+wcwidth==0.2.13
+webcolors==24.11.1
+webencodings==0.5.1
+websocket-client==1.8.0
+widgetsnbextension==4.0.13
+xxhash==3.5.0
+zstandard==0.23.0
+
+# 구글 api 관련
+google-api-python-client
+google_auth_oauthlib
+
+# 솔라 api 관련
+langchain-upstage
