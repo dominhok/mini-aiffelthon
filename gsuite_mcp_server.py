@@ -7,12 +7,14 @@ from google_auth import (
 )
 from gmail_utils import (
     list_emails, search_emails, get_email_content, 
-    send_email, modify_email_labels
+    send_email, modify_email_labels, format_email_for_display
 )
 from calendar_utils import (
     list_upcoming_events, create_calendar_event, 
     format_event_for_display
 )
+import json
+from datetime import datetime
 
 # Initialize FastMCP server with configuration
 mcp = FastMCP(
@@ -93,38 +95,58 @@ async def search_emails_tool(query: str, max_results: int = 10) -> str:
     return result
 
 @mcp.tool()
-async def send_email_tool(to: str, subject: str, body: str, cc: str = "", bcc: str = "", html: bool = False) -> str:
+async def send_email_tool(to: str = None, subject: str = None, body: str = None, cc: str = "", bcc: str = "", html: bool = False) -> str:
     """
-    Gmail을 통해 이메일을 전송합니다.
+    Gmail을 통해 이메일을 전송합니다. 필수 정보(to, subject, body)가 없으면 폼 요청 신호를 반환합니다.
     
     Args:
-        to: 수신자 이메일 주소 (쉼표로 구분하여 여러 명 지정 가능)
+        to: 수신자 이메일 주소 (쉼표 구분 가능)
         subject: 이메일 제목
         body: 이메일 본문
-        cc: 참조 수신자 (선택, 쉼표로 구분하여 여러 명 지정 가능)
-        bcc: 숨은 참조 수신자 (선택, 쉼표로 구분하여 여러 명 지정 가능)
+        cc: 참조 (선택)
+        bcc: 숨은 참조 (선택)
         html: HTML 형식 여부 (기본값: False)
         
     Returns:
-        str: 이메일 전송 결과
+        str: 이메일 전송 결과 또는 폼 요청 신호(JSON)
     """
+    # --- 인수 검사 추가 --- START
+    missing = []
+    if not to: missing.append("to")
+    if not subject: missing.append("subject")
+    if not body: missing.append("body")
+
+    if missing:
+        print(f"DEBUG (send_email_tool): Missing arguments: {missing}. Signaling for form.")
+        return json.dumps({
+            "status": "needs_form",
+            "form_type": "email",
+            "missing": missing
+        })
+    # --- 인수 검사 추가 --- END
+
     credentials = load_credentials()
     if not credentials:
         return "Google 계정 인증이 필요합니다."
     
     service = build_gmail_service(credentials)
     
-    # 쉼표로 구분된 이메일 주소를 리스트로 변환
     to_list = [email.strip() for email in to.split(',') if email.strip()]
     cc_list = [email.strip() for email in cc.split(',') if email.strip()] if cc else None
     bcc_list = [email.strip() for email in bcc.split(',') if email.strip()] if bcc else None
     
-    sent_message = send_email(service, to_list, subject, body, cc=cc_list, bcc=bcc_list, html=html)
-    
-    if sent_message:
-        return f"이메일이 성공적으로 전송되었습니다. (ID: {sent_message['id']})"
-    else:
-        return "이메일 전송에 실패했습니다."
+    try: # API 호출 오류 처리 추가
+        sent_message = send_email(service, to_list, subject, body, cc=cc_list, bcc=bcc_list, html=html)
+        if sent_message:
+            return json.dumps({ # 성공 시에도 JSON 반환 고려 (일관성)
+                "status": "success",
+                "message": f"이메일이 성공적으로 전송되었습니다. (ID: {sent_message['id']})"
+            })
+        else:
+            return json.dumps({"status": "error", "message": "이메일 전송에 실패했습니다."})
+    except Exception as e:
+        print(f"ERROR (send_email_tool): {e}")
+        return json.dumps({"status": "error", "message": f"이메일 전송 중 오류 발생: {str(e)}"})
 
 @mcp.tool()
 async def modify_email_tool(msg_id: str, action: str) -> str:
@@ -208,10 +230,10 @@ async def list_events_tool(max_results: int = 10) -> str:
     return result
 
 @mcp.tool()
-async def create_event_tool(summary: str, start_datetime: str, end_datetime: str, 
+async def create_event_tool(summary: str = None, start_datetime: str = None, end_datetime: str = None, 
                            location: str = "", description: str = "", attendees: str = "") -> str:
     """
-    Google 캘린더에 새 일정을 추가합니다.
+    Google 캘린더에 새 일정을 추가합니다. 필수 정보(summary, start_datetime, end_datetime)가 없으면 폼 요청 신호를 반환합니다.
     
     Args:
         summary: 일정 제목
@@ -219,41 +241,60 @@ async def create_event_tool(summary: str, start_datetime: str, end_datetime: str
         end_datetime: 종료 시간 (YYYY-MM-DD HH:MM 형식)
         location: 장소 (선택)
         description: 설명 (선택)
-        attendees: 참석자 이메일 주소 (선택, 쉼표로 구분하여 여러 명 지정 가능)
+        attendees: 참석자 이메일 주소 (선택, 쉼표 구분 가능)
         
     Returns:
-        str: 일정 생성 결과
+        str: 일정 생성 결과 또는 폼 요청 신호(JSON)
     """
+    # --- 인수 검사 추가 --- START
+    missing = []
+    if not summary: missing.append("summary")
+    if not start_datetime: missing.append("start_datetime")
+    if not end_datetime: missing.append("end_datetime")
+
+    if missing:
+        print(f"DEBUG (create_event_tool): Missing arguments: {missing}. Signaling for form.")
+        return json.dumps({
+            "status": "needs_form",
+            "form_type": "calendar",
+            "missing": missing
+        })
+    # --- 인수 검사 추가 --- END
+
     credentials = load_credentials()
     if not credentials:
-        return "Google 계정 인증이 필요합니다."
+        return "Google 계정 인증이 필요합니다." # 이 경우는 JSON 아님
     
     service = build_calendar_service(credentials)
     
-    # 날짜/시간 문자열을 datetime 객체로 변환
     try:
         start_time = datetime.strptime(start_datetime, "%Y-%m-%d %H:%M")
         end_time = datetime.strptime(end_datetime, "%Y-%m-%d %H:%M")
     except ValueError:
-        return "날짜/시간 형식이 올바르지 않습니다. YYYY-MM-DD HH:MM 형식으로 입력해주세요."
+        return json.dumps({"status": "error", "message": "날짜/시간 형식이 올바르지 않습니다. YYYY-MM-DD HH:MM 형식으로 입력해주세요."})
     
-    # 참석자 목록 처리
     attendee_list = [email.strip() for email in attendees.split(',') if email.strip()] if attendees else None
     
-    event = create_calendar_event(
-        service, 
-        summary=summary, 
-        location=location, 
-        description=description,
-        start_time=start_time, 
-        end_time=end_time, 
-        attendees=attendee_list
-    )
-    
-    if event:
-        return f"일정이 성공적으로 생성되었습니다. (ID: {event['id']})"
-    else:
-        return "일정 생성에 실패했습니다."
+    try: # API 호출 오류 처리 추가
+        event = create_calendar_event(
+            service, 
+            summary=summary, 
+            location=location, 
+            description=description,
+            start_time=start_time, 
+            end_time=end_time, 
+            attendees=attendee_list
+        )
+        if event:
+             return json.dumps({ # 성공 시에도 JSON 반환
+                "status": "success",
+                "message": f"일정이 성공적으로 추가되었습니다. (ID: {event['id']})"
+             })
+        else:
+            return json.dumps({"status": "error", "message": "일정 추가에 실패했습니다."})
+    except Exception as e:
+        print(f"ERROR (create_event_tool): {e}")
+        return json.dumps({"status": "error", "message": f"일정 추가 중 오류 발생: {str(e)}"})
 
 if __name__ == "__main__":
     # Print a message indicating the server is starting
