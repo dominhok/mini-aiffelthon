@@ -31,7 +31,6 @@ from langchain_core.messages.tool import ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.runnables import RunnableConfig
 from langchain_upstage import ChatUpstage
-from langchain_core.tools import tool
 
 # Google 인증 관련 모듈 임포트
 from google_auth import (
@@ -39,8 +38,7 @@ from google_auth import (
     save_credentials, load_credentials, is_authenticated,
     build_gmail_service, build_calendar_service
 )
-from gmail_utils import format_email_for_display
-from calendar_utils import format_event_for_display, create_calendar_event
+from calendar_utils import create_calendar_event
 from gmail_utils import send_email
 from datetime import datetime
 
