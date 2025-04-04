@@ -1,4 +1,6 @@
 import requests
+import os
+from dotenv import load_dotenv
 
 def get_location():
     """
@@ -37,7 +39,10 @@ def get_weather(lat, lon, api_key):
         print("날씨 정보를 가져오는 중 오류 발생:", e)
     return None
 
-def main():
+def return_weather():
+    # .env 파일에서 환경 변수 로드
+    load_dotenv()
+
     lat, lon = get_location()
     if lat is None or lon is None:
         print("위치 정보를 가져올 수 없습니다.")
@@ -45,8 +50,12 @@ def main():
 
     print(f"감지된 위치: 위도 {lat}, 경도 {lon}")
 
-    # OpenWeatherMap API 키를 입력하세요.
-    api_key = "c3fc357863254c9e5183d866d09fd2d0"
+    # OpenWeatherMap API 키를 환경 변수에서 불러오기
+    api_key = os.getenv("WEATHERMAP_API_KEY")
+    if not api_key:
+        print("오류: OPENWEATHERMAP_API_KEY 환경 변수가 설정되지 않았습니다.")
+        print(".env 파일에 해당 변수를 추가해주세요.")
+        return
     
     weather = get_weather(lat, lon, api_key)
     if weather:
@@ -58,4 +67,4 @@ def main():
         print("날씨 정보를 가져올 수 없습니다.")
 
 if __name__ == "__main__":
-    main()
+    return_weather()
