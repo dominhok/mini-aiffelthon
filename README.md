@@ -6,7 +6,6 @@
 [![Python](https://img.shields.io/badge/Python-≥3.10-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![Version](https://img.shields.io/badge/Version-0.1.0-orange)](https://github.com/Minhokei/langgraph-mcp-agents)
 
-<img src="https://github.com/user-attachments/assets/51e3304c-8e70-4d6c-b259-d69bf1a0496e" width="250"/>
 
 ## 프로젝트 개요
 
