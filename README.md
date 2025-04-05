@@ -84,7 +84,7 @@
 
 ## `.env` 파일 설정
 
-프로젝트 루트 디렉토리에 `.env` 파일을 생성하고, `.env.example` 파일을 참고하여 다음과 같이 API 키와 설정을 입력합니다.
+프로젝트 루트 디렉토리에 `.env` 파일을 생성하고, 다음과 같이 API 키와 설정을 입력합니다.
 
 ```dotenv
 # .env
@@ -108,8 +108,6 @@ GOOGLE_CREDENTIALS_PATH="여러분의 credentials.json 파일 경로"
 # 배포 시: 배포된 앱의 callback URI (Google Cloud Console에 등록한 URI와 일치해야 함)
 REDIRECT_URI="http://localhost:8501/callback"
 ```
-
-**중요**: `.gitignore` 파일에 `.env`와 `credentials.json`, `token.pickle`, `interests.pickle`이 포함되어 있는지 확인하여 민감 정보가 Git에 커밋되지 않도록 하세요.
 
 ## 사용법
 
@@ -145,9 +143,6 @@ REDIRECT_URI="http://localhost:8501/callback"
     *   관심 분야가 설정되어 있다면 자동으로 생성된 최신 정보 브리핑을 확인할 수 있습니다.
     *   하단의 입력창을 통해 직접 원하는 키워드로 웹 검색을 수행할 수도 있습니다.
 
-## 라이선스
-
-이 프로젝트는 MIT 라이선스를 따릅니다. 자세한 내용은 [LICENSE](https://opensource.org/licenses/MIT) 파일을 참고하세요.
 
 ## 참고 및 기반 프로젝트
 
@@ -157,3 +152,6 @@ REDIRECT_URI="http://localhost:8501/callback"
 *   `model-context-protocol`: [https://github.com/modelcontextprotocol](https://github.com/modelcontextprotocol)
 *   `langchain-mcp-adapters`: [https://github.com/langchain-ai/langchain-mcp-adapters](https://github.com/langchain-ai/langchain-mcp-adapters)
 
+## 라이선스
+
+이 프로젝트는 MIT 라이선스를 따릅니다. 자세한 내용은 [LICENSE](https://opensource.org/licenses/MIT) 파일을 참고하세요.
