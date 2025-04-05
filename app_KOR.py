@@ -94,7 +94,7 @@ with tab1:
             position: fixed;
             bottom: 0;
             /* width: calc(100% - 1rem); */ /* 너비 자동 조정으로 변경 */
-            background-color: black; /* 배경색 흰색으로 변경 */
+            background-color: #9CA3AF; /* 배경색 흰색으로 변경 */
             padding: 1rem 1rem 1rem 1rem; /* 위, 오른쪽, 아래, 왼쪽 여백 */
             border-top: 1px solid #e0e0e0; /* 구분선 */
             z-index: 999;
