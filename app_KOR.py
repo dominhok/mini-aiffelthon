@@ -762,15 +762,19 @@ with tab1:
                 except Exception as e:
                     st.error(f"인증 오류: {str(e)}")
             else: # 인증 코드가 없을 때 버튼 표시
-                # 5. 인증 버튼 (st.link_button 사용)
+                # 5. 인증 버튼 (st.link_button 대신 st.markdown 사용)
                 try:
                     auth_url = get_authorization_url(st.session_state.flow)
-                    st.link_button(
-                        "Google 계정 연동하기", 
-                        auth_url, 
-                        type="primary", 
-                        use_container_width=True
+                    # --- st.markdown 사용으로 되돌림 ---
+                    button_label = "Google 계정 연동하기"
+                    # 기본 Streamlit 버튼 스타일과 유사하게 보이도록 인라인 스타일 적용
+                    st.markdown(
+                        f'''<a href="{auth_url}" target="_self" style="display: inline-block; padding: 0.25rem 0.75rem; background-color: #FF4B4B; color: white; border-radius: 0.25rem; text-decoration: none; text-align: center; width: 100%; box-sizing: border-box; margin-bottom: 0.5rem;">
+                            {button_label}
+                        </a>''',
+                        unsafe_allow_html=True
                     )
+                    # --- 되돌림 끝 ---
                 except Exception as e:
                     st.error(f"인증 URL 생성 중 오류 발생: {str(e)}")
         else:
