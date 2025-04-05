@@ -1,13 +1,13 @@
 # 나만의 비서 나비: LangGraph + MCP 에이전트
 
 [![Korean](https://img.shields.io/badge/Language-한국어-red)](README.md)
-[![GitHub](https://img.shields.io/badge/GitHub-langgraph--mcp--agents-black?logo=github)](https://github.com/Minhokei/langgraph-mcp-agents) <!-- 저장소 URL을 실제 URL로 변경하세요 -->
+[![GitHub](https://img.shields.io/badge/GitHub-langgraph--mcp--agents-black?logo=github)](https://github.com/dominhok/mini-aiffelthon.git)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-≥3.10-blue?logo=python&logoColor=white)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/Version-0.2.0-orange)](https://github.com/Minhokei/langgraph-mcp-agents) <!-- 버전은 적절히 수정하세요 -->
+[![Version](https://img.shields.io/badge/Version-0.1.0-orange)](https://github.com/Minhokei/langgraph-mcp-agents)
 
-![project demo](./assets/project-demo.png)
-<!-- 실제 나비 비서 스크린샷으로 교체하는 것이 좋습니다. -->
+![image](https://github.com/user-attachments/assets/a6528da4-f34c-4531-8e43-599522733853)
+
 
 ## 프로젝트 개요
 
@@ -30,9 +30,8 @@
 *   **Streamlit 기반 웹 인터페이스**: 사용자 친화적인 UI 제공
 
 ## 아키텍처
+![ChatGPT Image 2025년 4월 6일 오전 01_14_34 (1)](https://github.com/user-attachments/assets/ba2cb96e-7a1f-46c5-85f5-0aef7563603c)
 
-![project architecture](./assets/architecture.png)
-<!-- 아키텍처 다이어그램이 현재 구조를 정확히 반영하는지 확인하세요. Upstage, Perplexity 등이 포함되면 좋습니다. -->
 
 1.  **Streamlit UI (`app_KOR.py`)**: 사용자와 상호작용하는 웹 프론트엔드.
 2.  **LangGraph ReAct Agent**: 사용자의 요청을 이해하고 적절한 도구를 선택 및 실행하는 핵심 로직 (Upstage Solar LLM 사용).
@@ -110,12 +109,6 @@ GOOGLE_CREDENTIALS_PATH="여러분의 credentials.json 파일 경로"
 # 로컬 개발 시: http://localhost:8501/callback
 # 배포 시: 배포된 앱의 callback URI (Google Cloud Console에 등록한 URI와 일치해야 함)
 REDIRECT_URI="http://localhost:8501/callback"
-
-# (선택) LangSmith 추적 설정
-# LANGSMITH_TRACING="true"
-# LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
-# LANGSMITH_API_KEY="여러분의 LangSmith API 키"
-# LANGSMITH_PROJECT="여러분의 LangSmith 프로젝트 이름"
 ```
 
 **중요**: `.gitignore` 파일에 `.env`와 `credentials.json`, `token.pickle`, `interests.pickle`이 포함되어 있는지 확인하여 민감 정보가 Git에 커밋되지 않도록 하세요.
@@ -154,25 +147,15 @@ REDIRECT_URI="http://localhost:8501/callback"
     *   관심 분야가 설정되어 있다면 자동으로 생성된 최신 정보 브리핑을 확인할 수 있습니다.
     *   하단의 입력창을 통해 직접 원하는 키워드로 웹 검색을 수행할 수도 있습니다.
 
-## 배포 관련 참고사항
-
-현재 설정 (`transport: "stdio"`를 사용하여 로컬 MCP 서버 실행)은 **Streamlit Cloud와 같은 표준 플랫폼에 직접 배포하기에는 적합하지 않습니다.** 이러한 플랫폼은 보통 단일 앱 프로세스 실행을 가정하며, 앱 내에서 별도의 백그라운드 서버 프로세스를 안정적으로 실행하는 것을 지원하지 않을 수 있습니다.
-
-실제 서비스 배포를 위해서는 다음과 같은 접근 방식을 고려해야 합니다:
-
-1.  **MCP 서버 분리 및 네트워크 통신**:
-    *   각 MCP 서버(`weather`, `gsuite`, `pplx_search`)를 별도의 서버(예: Docker 컨테이너, 클라우드 함수, VM 등)에 배포합니다.
-    *   `app_KOR.py`의 `mcp_config` 설정을 수정하여 `stdio` 대신 `tcp` 전송 방식을 사용하고, 각 MCP 서버의 네트워크 주소와 포트를 지정합니다.
-2.  **Docker Compose 활용**: 전체 애플리케이션 스택(Streamlit 앱, MCP 서버들)을 Docker Compose로 묶어 컨테이너화하여 배포합니다. 이는 의존성 관리와 프로세스 관리에 용이합니다.
-
 ## 라이선스
 
 이 프로젝트는 MIT 라이선스를 따릅니다. 자세한 내용은 [LICENSE](https://opensource.org/licenses/MIT) 파일을 참고하세요.
 
 ## 참고 및 기반 프로젝트
 
-이 "나비 비서" 애플리케이션은 LangGraph와 MCP(Model Context Protocol)를 통합하는 방법을 보여주는 [teddylee777/langgraph-mcp-agents](https://github.com/teddylee777/langgraph-mcp-agents) 프로젝트를 기반으로 개발되었습니다. 해당 프로젝트는 MCP 도구를 Streamlit 인터페이스를 통해 관리하고 LangGraph ReAct 에이전트와 상호작용하는 기본적인 틀을 제공합니다.
+이 "나비 비서" 애플리케이션은 LangGraph와 MCP(Model Context Protocol)를 통합하는 방법을 보여주는 [teddylee777/langgraph-mcp-agents](https://github.com/teddylee777/langgraph-mcp-agents) 프로젝트를 참고하였습니다.
 
 주요 참고 라이브러리는 다음과 같습니다:
+*   `model-context-protocol`: [https://github.com/modelcontextprotocol](https://github.com/modelcontextprotocol)
 *   `langchain-mcp-adapters`: [https://github.com/langchain-ai/langchain-mcp-adapters](https://github.com/langchain-ai/langchain-mcp-adapters)
 
