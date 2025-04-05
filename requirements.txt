@@ -29,3 +29,7 @@ google-auth==2.38.0
 
 # Upstage 모델 사용
 langchain-upstage==0.6.0
+
+# HTTP 요청 라이브러리
+requests
+httpx
