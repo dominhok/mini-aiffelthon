@@ -1,4 +1,4 @@
-# 나만의 비서 나비: LangGraph + MCP 에이전트
+# 나만의 비서 나비
 
 [![Korean](https://img.shields.io/badge/Language-한국어-red)](README.md)
 [![GitHub](https://img.shields.io/badge/GitHub-langgraph--mcp--agents-black?logo=github)](https://github.com/dominhok/mini-aiffelthon.git)
@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/Python-≥3.10-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![Version](https://img.shields.io/badge/Version-0.1.0-orange)](https://github.com/Minhokei/langgraph-mcp-agents)
 
-![image](https://github.com/user-attachments/assets/a6528da4-f34c-4531-8e43-599522733853)
+![ChatGPT Image 2025년 4월 6일 오전 02_59_02](https://github.com/user-attachments/assets/fe49b47f-5f3d-4d19-814b-6d9797d1cd3d)
 
 
 ## 프로젝트 개요
