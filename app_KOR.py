@@ -252,7 +252,7 @@ with tab1:
         st.session_state.thread_id = random_uuid()
 
     ### Google 인증 관련 상수
-    REDIRECT_URI = "http://localhost:8501/callback"
+    REDIRECT_URI = os.getenv("REDIRECT_URI")
 
     # --- 사용자 정의 예외 --- START
     class StopStreamAndRerun(Exception):
