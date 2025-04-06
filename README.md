@@ -34,17 +34,17 @@
 
 <br><br>
 
-### 현재 날씨  
+### 현재 날씨 조회  
 <img src="https://github.com/user-attachments/assets/f18d1387-e8b6-4b38-a45f-201dfc1494e7" width="90%" alt="현재 날씨">
 
 <br><br>
 
-### 일정 조회  
+### 일정 가져오기  
 <img src="https://github.com/user-attachments/assets/b0b00274-339c-4255-8735-454beefa1f61" width="90%" alt="일정 조회">
 
 <br><br>
 
-### 일정 생성  
+### 일정 추가하기  
 <img src="https://github.com/user-attachments/assets/9cc9470a-9689-40aa-ac0e-32dbe2c2b8bd" width="90%" alt="일정 생성">
 
 <br><br>
