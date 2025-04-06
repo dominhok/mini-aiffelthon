@@ -1,4 +1,4 @@
-# 나만의 비서 나비
+# 🦋 나만의 비서 나비
 
 [![Korean](https://img.shields.io/badge/Language-한국어-red)](README.md)
 [![GitHub](https://img.shields.io/badge/GitHub-langgraph--mcp--agents-black?logo=github)](https://github.com/dominhok/mini-aiffelthon.git)
@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/badge/Version-0.1.0-orange)](https://github.com/Minhokei/langgraph-mcp-agents)
 
 
-## 프로젝트 개요
+## 🧠 프로젝트 개요
 
 **나만의 비서 나비(Nabi)**는 LangGraph ReAct 에이전트와 MCP(Model Context Protocol)를 활용하여 사용자의 일상을 돕는 AI 비서 애플리케이션입니다. Streamlit으로 구축된 웹 인터페이스를 통해 사용자와 상호작용하며, Upstage Solar LLM을 기반으로 작동합니다.
 
@@ -16,7 +16,7 @@
 *   **Google Workspace 연동**: Google 계정 인증을 통해 Gmail 확인/검색/전송 및 Google Calendar 일정 조회/추가 기능을 제공합니다 (`gsuite_mcp_server.py`).
 *   **정보 검색 및 브리핑**: Perplexity AI를 사용하여 웹 검색을 수행하고, 사용자가 설정한 관심 분야에 대한 최신 정보 보고서를 제공합니다 (`pplx_search_mcp_server.py`).
 
-## 주요 기능
+## ✨ 주요 기능
 
 *   **대화형 AI 비서**: Upstage Solar LLM 기반의 자연스러운 대화 기능
 *   **날씨 정보 조회**: 현재 위치 기반 실시간 날씨 정보 제공
@@ -27,8 +27,33 @@
 *   **직접 웹 검색**: Perplexity AI를 통한 실시간 정보 검색
 *   **Streamlit 기반 웹 인터페이스**: 사용자 친화적인 UI 제공
 
-## 아키텍처
-![ChatGPT Image 2025년 4월 6일 오전 01_14_34 (1)](https://github.com/user-attachments/assets/ba2cb96e-7a1f-46c5-85f5-0aef7563603c)
+## 📦 DEMO
+
+### 로그인 시 자동 조회  
+<img src="https://github.com/user-attachments/assets/7f0d1d6f-4ebe-4dab-b5b8-a6ac715f0033" width="90%" alt="로그인 시 자동 조회">
+
+<br><br>
+
+### 현재 날씨  
+<img src="https://github.com/user-attachments/assets/f18d1387-e8b6-4b38-a45f-201dfc1494e7" width="90%" alt="현재 날씨">
+
+<br><br>
+
+### 일정 조회  
+<img src="https://github.com/user-attachments/assets/b0b00274-339c-4255-8735-454beefa1f61" width="90%" alt="일정 조회">
+
+<br><br>
+
+### 일정 생성  
+<img src="https://github.com/user-attachments/assets/9cc9470a-9689-40aa-ac0e-32dbe2c2b8bd" width="90%" alt="일정 생성">
+
+<br><br>
+
+## 🏗 아키텍처
+
+<div style="text-align: center;">
+  <img src="https://github.com/user-attachments/assets/ba2cb96e-7a1f-46c5-85f5-0aef7563603c" width="80%" height="auto" alt="아키텍처 다이어그램">
+</div>
 
 
 1.  **Streamlit UI (`app_KOR.py`)**: 사용자와 상호작용하는 웹 프론트엔드.
@@ -40,7 +65,7 @@
     *   `pplx_search`: 웹 검색 기능 제공 (Perplexity AI API 사용)
     *   **참고:** 현재 구현에서는 Streamlit 앱이 시작될 때 `MultiServerMCPClient`를 통해 이 서버들을 로컬에서 `stdio` 전송 방식으로 자동 실행하려고 시도합니다.
 
-## 설치
+## ⚙️ 설치
 
 1.  **저장소 클론**:
     ```bash
@@ -61,7 +86,7 @@
         uv pip install -r requirements.txt
         ```
 
-## 사전 준비: API 키 및 Google Cloud 설정
+## 🛠 사전 준비: API 키 및 Google Cloud 설정
 
 애플리케이션을 실행하기 전에 필요한 API 키와 Google Cloud 설정을 완료해야 합니다.
 
@@ -82,7 +107,7 @@
     *   **OpenWeatherMap API 키**: [https://openweathermap.org/](https://openweathermap.org/) 에서 가입하고 API 키를 발급받습니다 (무료 플랜 가능).
     *   **Perplexity AI API 키**: [https://docs.perplexity.ai/](https://docs.perplexity.ai/) 에서 가입하고 API 키를 발급받습니다.
 
-## `.env` 파일 설정
+## 🧾 `.env` 파일 설정
 
 프로젝트 루트 디렉토리에 `.env` 파일을 생성하고, 다음과 같이 API 키와 설정을 입력합니다.
 
@@ -109,7 +134,7 @@ GOOGLE_CREDENTIALS_PATH="여러분의 credentials.json 파일 경로"
 REDIRECT_URI="http://localhost:8501/callback"
 ```
 
-## 사용법
+## 🚀 사용법
 
 1.  **가상 환경 활성화**:
     ```bash
@@ -144,7 +169,7 @@ REDIRECT_URI="http://localhost:8501/callback"
     *   하단의 입력창을 통해 직접 원하는 키워드로 웹 검색을 수행할 수도 있습니다.
 
 
-## 참고 및 기반 프로젝트
+## 📚 참고 및 기반 프로젝트
 
 이 "나비 비서" 애플리케이션은 LangGraph와 MCP(Model Context Protocol)를 통합하는 방법을 보여주는 [teddylee777/langgraph-mcp-agents](https://github.com/teddylee777/langgraph-mcp-agents) 프로젝트를 참고하였습니다.
 
@@ -152,6 +177,6 @@ REDIRECT_URI="http://localhost:8501/callback"
 *   `model-context-protocol`: [https://github.com/modelcontextprotocol](https://github.com/modelcontextprotocol)
 *   `langchain-mcp-adapters`: [https://github.com/langchain-ai/langchain-mcp-adapters](https://github.com/langchain-ai/langchain-mcp-adapters)
 
-## 라이선스
+## 📄 라이선스
 
 이 프로젝트는 MIT 라이선스를 따릅니다. 자세한 내용은 [LICENSE](https://opensource.org/licenses/MIT) 파일을 참고하세요.
