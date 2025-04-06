@@ -29,7 +29,7 @@
 
 ## 📦 DEMO
 
-### 로그인 시 자동 조회  
+### 오늘의 보고서 
 <img src="https://github.com/user-attachments/assets/7f0d1d6f-4ebe-4dab-b5b8-a6ac715f0033" width="90%" alt="로그인 시 자동 조회">
 
 <br><br>
