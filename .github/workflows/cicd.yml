@@ -180,11 +180,10 @@ jobs:
 
             echo "Instance $INSTANCE_NAME created/recreated successfully."
             echo "instance_name=$INSTANCE_NAME" >> $GITHUB_OUTPUT
+
+            sleep 333
           fi
           
-      - name: Wait for Instance to Initialize
-        run: sleep 333
-
       - name: Verify Instance Creation
         run: |
           gcloud compute instances describe $INSTANCE_NAME --zone "${REGION}-b"
