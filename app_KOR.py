@@ -41,12 +41,18 @@ from google_auth import (
     build_gmail_service, build_calendar_service
 )
 
-from db_helper import (save_credentials, load_credentials, is_authenticated)
+from db_helper import (save_credentials, load_credentials, is_authenticated, init_db)
 
 
 from calendar_utils import create_calendar_event
 from gmail_utils import send_email
 from datetime import datetime
+
+# --- 추가: 데이터베이스 관련 임포트 및 초기화 --- START
+from db_helper import init_db, save_credentials, load_credentials, is_authenticated
+
+init_db() # 앱 시작 시 데이터베이스 초기화
+# --- 추가: 데이터베이스 관련 임포트 및 초기화 --- END
 
 # 환경 변수 로드 (.env 파일에서 API 키 등의 설정을 가져옴)
 load_dotenv(override=True)
@@ -67,15 +73,22 @@ with tab1:
     with st.sidebar.container(border=True):
         st.markdown("### 🦋 나만의 비서: 나비")
         st.caption("**나비**는 당신의 일상을 더 스마트하게 관리하도록 돕는 AI 비서입니다.") # caption으로 변경
- 
+        st.divider() # 구분선 추가
+        
         st.markdown("📧 **Gmail 및 캘린더 연동**")
         st.caption("메일 확인/작성 및 캘린더 일정 관리") # 각 항목 설명은 caption 사용
         
         st.markdown("📰 **관심 분야 조사**")
         st.caption("최신 정보 보고서 받기")
+
+        st.markdown("🔍 **직접 검색**")
+        st.caption("원하는 정보 직접 찾아보기")
         
         st.markdown("💬 **일상 대화**")
         st.caption("날씨 질문, 간단한 대화 등")
+        
+        st.divider() # 하단 구분선 추가
+        st.markdown("✨ 나비와 함께 더 편리한 일상을 만들어보세요!") # 마무리 문구
         
     # --- 사이드바 상단 서비스 소개 --- END
 
