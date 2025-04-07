@@ -6,6 +6,7 @@ import anyio
 import os
 from pathlib import Path
 import pickle
+import sqlite3
 
 # # nest_asyncio 적용: 이미 실행 중인 이벤트 루프 내에서 중첩 호출 허용 -> 주석 처리
 # nest_asyncio.apply()
@@ -36,10 +37,13 @@ from langchain_upstage import ChatUpstage
 
 # Google 인증 관련 모듈 임포트
 from google_auth import (
-    create_oauth_flow, get_authorization_url, fetch_token, 
-    save_credentials, load_credentials, is_authenticated,
+    create_oauth_flow, get_authorization_url, fetch_token,
     build_gmail_service, build_calendar_service
 )
+
+from db_helper import (save_credentials, load_credentials, is_authenticated)
+
+
 from calendar_utils import create_calendar_event
 from gmail_utils import send_email
 from datetime import datetime
@@ -780,13 +784,20 @@ with tab1:
         else:
             st.success("✅ Google 계정이 연동되었습니다.")
             if st.button("연동 해제", use_container_width=True):
-                token_path = Path("token.pickle")
-                if token_path.exists():
-                    token_path.unlink()
+                # SQLite에서 인증 정보 삭제
+                conn = sqlite3.connect('auth.db')
+                cursor = conn.cursor()
+                
+                # 기본 사용자 ID 삭제 (멀티유저 지원시 필요시 user_id 파라미터 추가)
+                cursor.execute('DELETE FROM google_auth WHERE user_id = ?', ('default',))
+                
+                conn.commit()
+                conn.close()
+                
+                # 세션 상태 초기화
                 st.session_state.google_authenticated = False
                 st.session_state.gmail_service = None
                 st.session_state.calendar_service = None
-                # 연동 해제 시에는 재생성 플래그 설정 불필요
                 st.rerun()
 
     # --- 관심 분야 입력 UI (수정) --- START
