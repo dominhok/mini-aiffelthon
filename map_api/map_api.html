@@ -228,7 +228,6 @@
         updateCurrentTime();
         setInterval(updateCurrentTime, 60000);
 
-        // 실시간 브라우저 위치 확인 / locPosition 값만 변경하면 됨
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(function(position) {
                 const lat = position.coords.latitude;
@@ -292,7 +291,7 @@
                 map.setBounds(bounds);
 
                 const ps = new kakao.maps.services.Places();
-                const keyword = "";
+                const keyword = "시장";
 
                 ps.keywordSearch(keyword, function(data, status) {
                     if (status === kakao.maps.services.Status.OK) {
@@ -321,13 +320,22 @@
                             routeBounds.extend(locPosition);
                             routeBounds.extend(shelterPos);
                             
-                            // 먼저 영역을 설정하고
-                            map.setBounds(routeBounds, 150);  // 여유 공간을 위해 패딩 150px 설정
+                            // 여유 공간을 위해 영역 확장
+                            const padding = 100; // 픽셀 단위의 여유 공간
+                            map.setBounds(routeBounds, padding);
+
+                            // 현재 위치와 대피소의 중간 지점을 계산
+                            const centerLat = (locPosition.getLat() + shelterPos.getLat()) / 2;
+                            const centerLng = (locPosition.getLng() + shelterPos.getLng()) / 2;
+                            const centerPosition = new kakao.maps.LatLng(centerLat, centerLng);
+                            
+                            // 부드러운 패닝으로 이동
+                            map.panTo(centerPosition);
 
                             // 상태 메시지 업데이트
                             document.querySelector('.status').textContent = 
                                 '✨ 가장 가까운 대피소까지의 안전한 경로를 확인해주세요.';
-                        }, 2000);
+                        }, 2000);  // 2초로 변경
 
                         const btn = document.getElementById("goBtn");
                         const mapUrl = new URL('https://map.kakao.com/');
